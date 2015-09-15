@@ -117,14 +117,16 @@ class SchemaValidator(object):
     :param remove_unknown_properties: defaults to False, set to True to
         filter out properties not listed in the schema definition. Only applies
         when disallow_unknown_properties is False.
+    :param format_parsers: optional dictionary of custom format parsers
     '''
 
     def __init__(self, format_validators=None, required_by_default=True,
                  blank_by_default=False, disallow_unknown_properties=False,
                  apply_default_to_data=False, fail_fast=True,
-                 remove_unknown_properties=False):
+                 remove_unknown_properties=False, format_parsers=None):
 
         self._format_validators = {}
+        self._format_parsers = {}
         self._errors = []
 
         # add the default format validators
@@ -135,6 +137,12 @@ class SchemaValidator(object):
         if format_validators:
             for key, value in format_validators.items():
                 self.register_format_validator(key, value)
+
+        # register any custom format parsers if they were provided
+        if format_parsers:
+            for key, value in format_parsers.items():
+                self.register_format_parser(key, value)
+
         self.required_by_default = required_by_default
         self.blank_by_default = blank_by_default
         self.disallow_unknown_properties = disallow_unknown_properties
@@ -146,6 +154,9 @@ class SchemaValidator(object):
 
     def register_format_validator(self, format_name, format_validator_fun):
         self._format_validators[format_name] = format_validator_fun
+
+    def register_format_parser(self, format_name, format_parser_fun):
+        self._format_parsers[format_name] = format_parser_fun
 
     def validate_type_string(self, val):
         return isinstance(val, _str_type)
@@ -470,10 +481,13 @@ class SchemaValidator(object):
         value = x.get(fieldname, None)
 
         format_validator = self._format_validators.get(format_option, None)
+        format_parser = self._format_parsers.get(format_option, None)
 
         if format_validator and value is not None:
             try:
                 format_validator(self, fieldname, value, format_option)
+                if format_parser:
+                    x[fieldname] = format_parser(self, fieldname, value, format_option)
             except FieldValidationError as fve:
                 if self.fail_fast:
                     raise
